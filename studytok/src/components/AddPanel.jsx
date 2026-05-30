@@ -45,22 +45,32 @@ export default function AddPanel({ onClose, onSave, onSaveMany, showToast }) {
 
   // ── PDF upload ────────────────────────────────────────────────────
   async function handleFile(file) {
-    if (!file) return
-    setLoadingPDF(true)
-    setPdfName(file.name)
-    try {
-      const fd = new FormData()
-      fd.append('pdf', file)
-      const res = await fetch('/api/parse-pdf', { method: 'POST', body: fd })
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      setSourceText(data.text)
-    } catch (e) {
-      showToast('❌', 'Error al leer PDF', e.message)
-      setPdfName('')
+  if (!file) return
+  setLoadingPDF(true)
+  setPdfName(file.name)
+  try {
+    if (file.name.endsWith('.pdf')) {
+      const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs')
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs'
+      const arrayBuffer = await file.arrayBuffer()
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+      let text = ''
+      for (let p = 1; p <= Math.min(pdf.numPages, 20); p++) {
+        const page = await pdf.getPage(p)
+        const content = await page.getTextContent()
+        text += content.items.map(i => i.str).join(' ') + '\n'
+      }
+      setSourceText(text.slice(0, 4000))
+    } else {
+      setSourceText(await file.text())
     }
-    setLoadingPDF(false)
+    setPdfName(file.name + ' ✓')
+  } catch (e) {
+    showToast('❌', 'Error al leer PDF', e.message)
+    setPdfName('')
   }
+  setLoadingPDF(false)
+}
 
   // ── Generate cards ────────────────────────────────────────────────
   async function generate() {
