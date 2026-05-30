@@ -1,4 +1,4 @@
-export const config = { runtime: 'edge' }
+export const config = { api: { bodyParser: { sizeLimit: '20mb' } } }
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
