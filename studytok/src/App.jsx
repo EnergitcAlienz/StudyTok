@@ -22,7 +22,6 @@ function getCurrentPalette(card) {
   return PALETTE[card?.type] || PALETTE.concept
 }
 
-// ── Onboarding ─────────────────────────────────────────────────────
 function Onboard({ onStart }) {
   return (
     <div style={{ minHeight:'100dvh', fontFamily:'Nunito,sans-serif', background:'linear-gradient(135deg,#f5f0ff 0%,#fff0f7 50%,#f0fdf8 100%)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:32, textAlign:'center', position:'relative', overflow:'hidden' }}>
@@ -36,7 +35,7 @@ function Onboard({ onStart }) {
         El scroll adictivo del feed, pero para aprender de verdad.
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:10, width:'100%', maxWidth:340, marginBottom:28, position:'relative' }}>
-        {[['👆','Desliza hacia arriba para avanzar'],['📎','Sube tu PDF y genera tarjetas con IA'],['🧠','Modo "Explícame" — aprende con historias, analogías y diagramas'],['🤖','Asistente de IA para investigar temas'],['🔥','Racha y XP para mantenerte enganchada']].map(([em,txt])=>(
+        {[['👆','Desliza hacia arriba para avanzar'],['📎','Sube tu PDF y genera tarjetas con IA'],['🧠','Modo "Explícame" — aprende con historias y analogías'],['🤖','Asistente de IA para investigar temas'],['☁️','Tarjetas sincronizadas en todos tus dispositivos']].map(([em,txt])=>(
           <div key={em} style={{ background:'rgba(255,255,255,0.85)', backdropFilter:'blur(8px)', border:'1px solid rgba(0,0,0,0.06)', borderRadius:14, padding:'10px 14px', display:'flex', alignItems:'center', gap:12, textAlign:'left', fontSize:'0.88rem', color:'#374151', boxShadow:'0 2px 8px rgba(0,0,0,0.05)' }}>
             <span style={{ fontSize:'1.3rem', flexShrink:0 }}>{em}</span>{txt}
           </div>
@@ -49,10 +48,9 @@ function Onboard({ onStart }) {
   )
 }
 
-// ── Main App ───────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState('onboard')
-  const { cards, addCard, addCards } = useCards()
+  const { cards, loading, error, addCard, addCards, reload } = useCards()
   const [deck, setDeck] = useState([])
   const [idx, setIdx] = useState(0)
   const [streak, setStreak] = useState(0)
@@ -93,8 +91,17 @@ export default function App() {
     setAnswered(a=>({...a,...update}))
   }
 
-  function handleSaveCard(card) { addCard(card); setDeck(prev=>[...prev,card]); showToast('🃏','¡Tarjeta guardada!','') }
-  function handleSaveMany(newCards) { addCards(newCards); setDeck(prev=>[...prev,...newCards]); showToast('🎉',`${newCards.length} slides añadidos!`,'Desliza para verlos') }
+  async function handleSaveCard(card) {
+    await addCard(card)
+    setDeck(prev => [...prev, card])
+    showToast('🃏','¡Tarjeta guardada!','Sincronizada en todos tus dispositivos ☁️')
+  }
+
+  async function handleSaveMany(newCards) {
+    await addCards(newCards)
+    setDeck(prev => [...prev, ...newCards])
+    showToast('🎉',`${newCards.length} slides guardados!','☁️ Sincronizados en todos tus dispositivos`)
+  }
 
   const current = deck[idx]
   const p = getCurrentPalette(current)
@@ -102,12 +109,20 @@ export default function App() {
 
   if (screen==='onboard') return <Onboard onStart={start} />
 
+  // Loading screen
+  if (loading) return (
+    <div style={{ height:'100dvh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'linear-gradient(135deg,#f5f0ff,#fff0f7)', gap:16 }}>
+      <div style={{ fontSize:'3rem', animation:'bob 1s ease-in-out infinite' }}>🌸</div>
+      <div style={{ fontWeight:900, fontSize:'1.1rem', background:'linear-gradient(135deg,#7c3aed,#be185d)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>Cargando tarjetas...</div>
+      <div style={{ fontFamily:'Space Mono,monospace', fontSize:'0.72rem', color:'#9ca3af' }}>Sincronizando con la nube ☁️</div>
+    </div>
+  )
+
   return (
     <div style={{ height:'100dvh', background:p.bg, fontFamily:'Nunito,sans-serif', overflow:'hidden', position:'relative', userSelect:'none', transition:'background 0.5s' }}
       onTouchStart={e=>{ touchY.current=e.touches[0].clientY }}
       onTouchEnd={e=>{ const dy=touchY.current-e.changedTouches[0].clientY; if(Math.abs(dy)>50) dy>0?goNext():goPrev() }}>
 
-      {/* Top stripe */}
       <div style={{ position:'absolute', top:0, left:0, right:0, height:4, background:p.stripe, zIndex:10, transition:'background 0.4s' }}/>
 
       {/* HUD */}
@@ -131,11 +146,10 @@ export default function App() {
           </div>
         ) : deck.map((card, i) => {
           const pos = i<idx?'above':i===idx?'active':'below'
-          return <CardRouter key={i} card={card} pos={pos} cardIdx={i} answered={answered} onAnswer={handleAnswer} onFlip={()=>setXp(x=>x+5)} />
+          return <CardRouter key={card.id||i} card={card} pos={pos} cardIdx={i} answered={answered} onAnswer={handleAnswer} onFlip={()=>setXp(x=>x+5)} />
         })}
       </div>
 
-      {/* Wheel nav */}
       <div style={{ position:'fixed', inset:0, zIndex:2, pointerEvents:'none' }} onWheel={e=>{ e.stopPropagation(); e.deltaY>0?goNext():goPrev() }}/>
 
       {/* Bottom HUD */}
