@@ -1,25 +1,34 @@
-export const config = { api: { bodyParser: { sizeLimit: '20mb' } } }
+export const config = { api: { bodyParser: false, sizeLimit: '20mb' } }
 
-export default async function handler(req) {
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 })
-  }
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   try {
-    const formData = await req.formData()
-    const file = formData.get('pdf') || formData.get('file')
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const buffer = Buffer.concat(chunks)
 
-    if (!file) {
-      return new Response(JSON.stringify({ error: 'No se recibió archivo' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
+    const boundary = req.headers['content-type']?.split('boundary=')[1]
+    if (!boundary) return res.status(400).json({ error: 'No boundary' })
+
+    const bodyStr = buffer.toString('latin1')
+    const parts = bodyStr.split('--' + boundary)
+    let fileBuffer = null
+
+    for (const part of parts) {
+      if (part.includes('filename=') && part.includes('Content-Type')) {
+        const dataStart = part.indexOf('\r\n\r\n') + 4
+        const dataEnd = part.lastIndexOf('\r\n')
+        if (dataStart > 3 && dataEnd > dataStart) {
+          fileBuffer = Buffer.from(part.slice(dataStart, dataEnd), 'latin1')
+          break
+        }
+      }
     }
 
-    const arrayBuffer = await file.arrayBuffer()
-    const bytes = new Uint8Array(arrayBuffer)
+    if (!fileBuffer) return res.status(400).json({ error: 'No se recibió archivo' })
 
-    let text = ''
+    const bytes = new Uint8Array(fileBuffer)
     let raw = ''
     for (let i = 0; i < bytes.length; i++) {
       const b = bytes[i]
@@ -27,6 +36,7 @@ export default async function handler(req) {
       else if (b === 10 || b === 13) raw += ' '
     }
 
+    let text = ''
     const matches = [...raw.matchAll(/\(([^)]{2,300})\)/g)]
     for (const m of matches) {
       const s = m[1].trim()
@@ -41,20 +51,10 @@ export default async function handler(req) {
 
     text = text.replace(/\s+/g, ' ').trim()
 
-    if (text.length < 50) {
-      return new Response(JSON.stringify({
-        error: 'PDF sin texto extraíble. Pega el texto manualmente.',
-      }), { status: 422, headers: { 'Content-Type': 'application/json' } })
-    }
+    if (text.length < 50) return res.status(422).json({ error: 'PDF sin texto extraíble. Pega el texto manualmente.' })
 
-    return new Response(JSON.stringify({ text: text.slice(0, 6000) }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return res.status(200).json({ text: text.slice(0, 6000) })
   } catch (e) {
-    return new Response(JSON.stringify({ error: 'Error: ' + e.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return res.status(500).json({ error: 'Error: ' + e.message })
   }
 }
